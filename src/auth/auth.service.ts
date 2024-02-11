@@ -10,6 +10,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { SignInInput } from './dto/signin-input';
+import { Response } from 'express';
 
 @Injectable()
 export class AuthService {
@@ -32,7 +33,7 @@ export class AuthService {
     return { message: 'User created successfully' };
   }
 
-  async signin(signInInput: SignInInput) {
+  async signin(signInInput: SignInInput, res: Response) {
     const user = await this.prisma.user.findUnique({
       where: {
         username: signInInput.username,
@@ -52,37 +53,38 @@ export class AuthService {
     }
     const { token } = await this.createTokens(user.id, user.email);
     await this.updateToken(user.id, token);
+    // set cookie
+    res.cookie('token', token, { httpOnly: true });
     return { token, user, message: 'User logged in successfully' };
   }
 
-
   async logout(userId: number) {
-      const user = await this.prisma.user.findUnique({
-          where: {
-              id: userId,
-          },
-      });
-  
-      if (!user) {
-          throw new NotFoundException('User not found');
-      }
-  
-      if (user.hashedToken === null) {
-          throw new UnauthorizedException('User not logged in');
-      }
-  
-      await this.prisma.user.update({
-          where: { id: userId },
-          data: { hashedToken: null },
-      });
-  
-      return { message: 'User logged out successfully', loggedOut: true };
+    const user = await this.prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.hashedToken === null) {
+      throw new UnauthorizedException('User not logged in');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { hashedToken: null },
+    });
+
+    return { message: 'User logged out successfully', loggedOut: true };
   }
-  
+
   async createTokens(userId: number, email: string) {
     const token = await this.jwtService.signAsync(
       { userId, email },
-      { expiresIn: '15m', secret: this.configService.get('JWT_SECRET') },
+      { expiresIn: '7d', secret: this.configService.get('JWT_SECRET') },
     );
     return { token };
   }
